@@ -1,17 +1,17 @@
 import csv
 import os
+import random
 
 import pyperclip
 from selenium import webdriver
-from selenium.common import NoSuchElementException
 from selenium.webdriver import ActionChains, Keys
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common import actions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+import threading
 
 # Set up ChromeDriver service
 s = Service('/Users/urisegman/Downloads/chromedriver_mac_arm64/chromedriver')
@@ -26,82 +26,90 @@ chrome_options.add_experimental_option("prefs", { \
     "profile.default_content_setting_values.notifications": 1
 })
 
-##### Question 1 functions #####
-def start_a_call(driver):
-    '''
-    Starts a call using the provided web driver.
-
-    Parameters:
-    driver (webdriver): An instance of a WebDriver from the Selenium WebDriver library.
-
-    Returns:
-    str: URL of the initiated call.
-
-    Note: Ensure the correct driver for your browser is in your PATH.
-    '''
-
-    wait = WebDriverWait(driver, 20)
-
-    driver.get('https://p2p.mirotalk.com/')
-
-    # Click the "Join Room" button
-    join_button = wait.until(EC.presence_of_element_located((By.ID, 'joinRoomButton')))
-    join_button.click()
-    # Wait for the prompt to show up
-    input_box = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input.swal2-input')))
-    time.sleep(2)
-    input_box.send_keys('observer_user1')
-    time.sleep(2)
-    # second join call button opens call under the given name
-    join_meeting_button = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, 'button.swal2-confirm')))
-    time.sleep(2)
-
-    join_meeting_button.click()
-    # copy url
-    # WebDriverWait(driver, 10).until(EC.invisibility_of_element_located((By.CSS_SELECTOR, 'p')))
-
-    copy_url_button = wait.until(EC.presence_of_element_located((By.XPATH, '//button[text()="Copy URL"]')))
-    time.sleep(2)  # Wait for 5 seconds so website loads
-
-    copy_url_button.click()
-    time.sleep(2)  # Wait for 2 seconds so paste is registered in memory
-
-    call_url = pyperclip.paste()
-    print(call_url, 'is the call url')
-    try:
-        close_button = driver.find_element(By.CSS_SELECTOR, 'button.swal2-cancel.swal2-styled.swal2-default-outline')
-        close_button.click()
-
-    except Exception:
-        pass
 
 
-    return call_url
+
+class MiroCall:
+    def __init__(self, user_driver=None, user_name=None):
+        self.initial_user_driver = user_driver if user_driver else webdriver.Chrome(service=s, options=chrome_options)
+        self.user_name = user_name
+        self.call_url = self.start_a_call()
+        self.participants = [User(self.user_name, self.call_url,  self.initial_user_driver)]
+
+    def add_participant(self, driver_to_add=None, username=None):
+        '''Username and driver can be inputted, but not necessarily'''
+        if not driver_to_add:
+            driver_to_add = webdriver.Chrome(service=s, options=chrome_options)
+        if not username:
+            username = str(len(self.participants) + 1)
+
+        self.join_a_call(driver_to_add, username)
+        if self.confirm_participants(username):
+            self.participants.append(User(username,self.call_url,driver_to_add))
+        else:
+            print(f'user not in call! failed adding user {username} to call')
 
 
-def join_a_call(participants, call_url):
-    '''
-    Joins a call with multiple participants using provided Selenium WebDriver instances and a call URL.
+    def start_a_call(self):
+        '''
+        Starts a call using the provided web driver.
 
-    Parameters:
-    participants (dict): A dictionary mapping participant names (str) to their corresponding
-                         WebDriver instances. Each participant will join the call using their
-                         respective WebDriver.
-    call_url (str): The URL of the call to join.
+        Parameters:
+        driver (webdriver): An instance of a WebDriver from the Selenium WebDriver library.
 
-    Behavior:
-    For each participant, the function navigates to the call URL, waits for the input box to load,
-    inputs the participant's name, waits for the join button to load, and then clicks it to join
-    the meeting. There are hard-coded sleeps after getting the call URL and clicking the join button,
-    which may need to be adjusted based on the page load time and specific web application behavior.
+        Returns:
+        str: URL of the initiated call.
 
-    Note: Ensure the correct driver for your browser is in your PATH.
-    '''
+        Note: Ensure the correct driver for your browser is in your PATH.
+        '''
+        if not self.user_name:
+            self.user_name = '1'
+        driver = self.initial_user_driver
+        wait = WebDriverWait(driver, 20)
+        driver.get('https://p2p.mirotalk.com/')
+        # Click the "Join Room" button
+        join_button = wait.until(EC.presence_of_element_located((By.ID, 'joinRoomButton')))
+        join_button.click()
+        # Wait for the prompt to show up
+        input_box = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input.swal2-input')))
+        time.sleep(2)
+        input_box.send_keys(self.user_name)
+        time.sleep(2)
+        # second join call button opens call under the given name
+        join_meeting_button = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'button.swal2-confirm')))
+        time.sleep(2)
+        join_meeting_button.click()
+        # copy url
+        # WebDriverWait(driver, 10).until(EC.invisibility_of_element_located((By.CSS_SELECTOR, 'p')))
+        copy_url_button = wait.until(EC.presence_of_element_located((By.XPATH, '//button[text()="Copy URL"]')))
+        time.sleep(2)  # Wait for 5 seconds so website loads
+        copy_url_button.click()
+        time.sleep(2)  # Wait for 2 seconds so paste is registered in memory
+        call_url = pyperclip.paste()
+        print(call_url, 'is the call url')
+        try:
+            close_button = driver.find_element(By.CSS_SELECTOR, 'button.swal2-cancel.swal2-styled.swal2-default-outline')
+            close_button.click()
 
-    for participant_name, driver in participants.items():
+        except Exception:
+            pass
+
+
+        return call_url
+
+
+    def join_a_call(self, driver, participant_name):
+        '''
+        Joins a call with multiple participants using provided Selenium WebDriver instances and a call URL.
+
+        Parameters:
+        participant_name: string of participant
+        driver: The driver of the participant
+        '''
+
         wait = WebDriverWait(driver, 30)
-        driver.get(call_url)
+        driver.get(self.call_url)
         # enter participant name
         time.sleep(4)
         input_box = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, 'input.swal2-input')))
@@ -113,208 +121,166 @@ def join_a_call(participants, call_url):
 
         join_meeting_button.click()
 
-def confirm_participants(starter, participants: dict):
-    '''
-    Confirms the presence of participants in a video call.
+    def confirm_participants(self, participant_name):
+        '''
+        Confirms the presence of participants in a video call.
+        Parameters:
+        - starter (WebDriver): The observer user's WebDriver instance.
+        - participants: A specific participant to check.
 
-    Parameters:
-    - starter (WebDriver): The observer user's WebDriver instance.
-    - participants (dict): A dictionary containing the names and WebDriver instances of the participants.
-
-    Returns:
-    - bool: True if all participants are present in the call, False otherwise.
-
-    Description:
-    This function takes the observer user's WebDriver instance, referred to as "starter," and a dictionary
-    of participants. The participants dictionary maps the string names of the participants to their
-    corresponding WebDriver instances. The function confirms the presence of participants in the video call.
-
-    The function finds all elements on the page with the class name 'videoPeerName', which represents the
-    participant names in the video call. It collects the names into a list and checks if each participant's
-    name exists in the list. If any participant's name is missing, the function returns False; otherwise,
-    it returns True.
-
-    Note: Ensure the correct driver for your browser is in your PATH.
-    '''
-    # wait for participant to show up
-    time.sleep(7)
-    elements = starter.find_elements(By.CLASS_NAME, 'videoPeerName')
-    participant_names = [element.text for element in elements]
-    print('participants are ', participant_names)
-    for participant_name in participants.keys():
+        Returns:
+        - bool: True if all participants are present in the call, False otherwise.
+        '''
+        # wait for participant to show up
+        time.sleep(7) # must have
+        elements = self.initial_user_driver.find_elements(By.CLASS_NAME, 'videoPeerName')
+        participant_names = [element.text for element in elements]
+        print('participants are ', participant_names)
         if not (participant_name in participant_names):
             return False
-    return True
+        return True
 
 
 ##### Question 2 functions #####
-def open_chat_box(participants):
-    '''this function goes through all the participants and opens their chat box for the start of the discussion'''
-    for user_name, driver in participants:
-        wait = WebDriverWait(driver, 20)
-        move_mouse_in_circles(driver, 2)
-        print(f'{user_name} is opening chat box')
-        move_mouse_in_circles(driver, 2)
+class User:
+    def __init__(self, name, urlcall, driver=None):
+        self.driver = driver if driver else webdriver.Chrome(service=s, options=chrome_options)
+        self.name = name
+        self.urlcall = urlcall
+        self.open_chat_box() # did not find out a way to dynamically open it yet, didnt have time to find relevant html
+        self.message_count = 0 # number of messages sent
+
+    def move_mouse_in_circles(self, seconds=2):
+        """
+        Moves the mouse cursor in circles on the screen for the specified duration.
+        Args:
+            driver (WebDriver): The Selenium WebDriver instance.
+            seconds (int): The duration in seconds for which to move the mouse in circles.
+        Returns:
+            None
+        """
+        actions = ActionChains(self.driver)
+        # Get the current timestamp
+        start_time = time.time()
+        # Move the mouse in circles for x seconds
+        while time.time() - start_time < seconds:
+            # Move the mouse in a circular pattern
+            actions.move_by_offset(5, 0).perform()
+            actions.move_by_offset(0, 5).perform()
+            actions.move_by_offset(-5, 0).perform()
+            actions.move_by_offset(0, -5).perform()
+
+    def open_chat_box(self):
+        '''this function goes through all the participants and opens their chat box for the start of the discussion'''
+        wait = WebDriverWait(self.driver, 20)
+        self.move_mouse_in_circles(2)
+        print(f'{self.name} is opening chat box')
+        self.move_mouse_in_circles(2)
         button_element = wait.until(EC.presence_of_element_located((By.ID, "chatRoomBtn")))
-        move_mouse_in_circles(driver, 2)
+        self.move_mouse_in_circles(2)
         button_element.click()
 
+    def wait_for_message_and_reply(self):
+        print(f"wait_for_message() in user {self.name}")
+        if self.message_count == 3:
+            print('read enough messages, sending killer message')
+            wait = WebDriverWait(self.driver, 20)
+            textarea_element = wait.until(EC.element_to_be_clickable((By.ID, 'msgerInput')))
+            textarea_element.send_keys(f'-1')
+            textarea_element.send_keys(Keys.ENTER)
+            return
 
-def start_discussion(participants: list[tuple], iterations):
-    """
-    Starts a discussion among participants in a live call by sending messages and reading the chat box.
-    for each red message it calls the add_row function that records the message
+        time2wait = random.random()
+        time.sleep(time2wait)
+        self.read_messages()
 
-    Args:
-        participants (list[tuple]): A list of tuples representing the participants in the call.
-        Each tuple contains the participant's driver name as a string and the driver instance.
-        iterations (int): The number of iterations to perform the discussion process.
-
-    Returns:
-        None
-
-    """
-    if iterations <= 0:
-        user_name, driver = participants[0]
-        messages = driver.find_elements(By.CLASS_NAME, 'msg-text')
+    def read_messages(self):
+        messages = self.driver.find_elements(By.CLASS_NAME, 'msg-text')
         messages = [message.text for message in messages]
-        print('received messages: ', messages)
         for message in messages:
+            print(f'read message {message}')
+            if message == '-1':
+                return
             message = message.split(',')
-            add_row(message[1], user_name[-1], message[0])
-            # add to csv what hasnt been read already
-        add_row(user_name[-1],'none','end_of_test')
-        return
-    if not len(participants):
-        return
 
-    for user_name, driver in participants:
-        wait = WebDriverWait(driver, 20)
-        # to check if we need to chat if not open, we must toggle the icons to appear through mouse movements:
+            if message[1] == self.name:
+                continue
+            if self.add_row(message[1], self.name, message[0]):
+                self.send_message()
+            else:
+                continue
+        self.wait_for_message_and_reply()
 
+    def send_message(self, specific_text='Hello'):
+        print(f'user {self.name} sending message')
+        wait = WebDriverWait(self.driver, 20)
         # send message
         textarea_element = wait.until(EC.element_to_be_clickable((By.ID, 'msgerInput')))
-        textarea_element.send_keys(f'Hello,{user_name[-1]}')
+        textarea_element.send_keys(f'{specific_text}#{self.message_count},{self.name}')
         textarea_element.send_keys(Keys.ENTER)
-        time.sleep(2)
-        # read messages
-        messages = driver.find_elements(By.CLASS_NAME, 'msg-text')
-        messages = [message.text for message in messages]
-        for message in messages:
-            message = message.split(',')
-            add_row(message[1], user_name[-1], message[0])
-            # add to csv what hasnt been read already
-
-    start_discussion(participants, iterations-1)
+        print(f"{self.name} sent message {specific_text}#{self.message_count}")
+        self.message_count += 1
+        self.wait_for_message_and_reply()
 
 
 
-def move_mouse_in_circles(driver, seconds):
-    """
-    Moves the mouse cursor in circles on the screen for the specified duration.
+    @staticmethod
+    def add_row(sentby, readby, text):
+        """
+        Adds a new row to a CSV file with the provided data, only if it has not yet been recorded
 
-    Args:
-        driver (WebDriver): The Selenium WebDriver instance.
-        seconds (int): The duration in seconds for which to move the mouse in circles.
+        Args:
+            sentby (str): The sender of the message.
+            readby (str): The recipient of the message.
+            text (str): The content of the message.
 
-    Returns:
-        None
+        Returns:
+            Bool: if message has been seen before
+        """
 
-    """
-    actions = ActionChains(driver)
-    # Get the current timestamp
-    start_time = time.time()
-    # Move the mouse in circles for x seconds
-    while time.time() - start_time < seconds:
-        # Move the mouse in a circular pattern
-        actions.move_by_offset(5, 0).perform()
-        actions.move_by_offset(0, 5).perform()
-        actions.move_by_offset(-5, 0).perform()
-        actions.move_by_offset(0, -5).perform()
+        headers = ['sentby', 'readby', 'message']
+        data = [sentby, readby, text]
+        file_path = 'chat_data.csv'
 
+        file_exists = os.path.isfile(file_path)
 
-def add_row(sentby, readby, text):
-    """
-    Adds a new row to a CSV file with the provided data, only if it has not yet been recorded
-
-    Args:
-        sentby (str): The sender of the message.
-        readby (str): The recipient of the message.
-        text (str): The content of the message.
-
-    Returns:
-        None
-
-    """
-
-    headers = ['sentby', 'readby', 'message']
-    data = [sentby, readby, text]
-    file_path = 'chat_data.csv'
-
-    file_exists = os.path.isfile(file_path)
-
-    if not file_exists:
-        with open(file_path, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(headers)
-            writer.writerow(data)
-    else:
-        with open(file_path, 'r', newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            rows = list(reader)
-
-        if data not in rows:
-            with open(file_path, 'a', newline='') as csvfile:
+        if not file_exists:
+            with open(file_path, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
+                writer.writerow(headers)
                 writer.writerow(data)
+        else:
+            with open(file_path, 'r', newline='') as csvfile:
+                reader = csv.reader(csvfile)
+                rows = list(reader)
+
+            if data not in rows:
+                with open(file_path, 'a', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(data)
+                return True
+            return False
+
+
 
 
 def exam_main():
-    '''
-    This exam function has two parts:
-    question 1 cretes a call, and adds participants using a dictionary where the key is the name it uses to sign in,
-    and the value is the driver instance
+    # q1
+    call = MiroCall()
+    call.add_participant()
+    print(f'current confirmed participants in call is {len(call.participants)}')
+    for par in call.participants:
+        print(f'participant_name {par.name}')
+    print(call.participants[0].name)
+    print(call.participants[1].name)
+    t1 = threading.Thread(target = call.participants[1].wait_for_message_and_reply)
+    t2 = threading.Thread(target=call.participants[0].send_message)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
-    once a call has begun, it adds the participant one by one to the call.
-    Then it uses the call starter participant to check that all the added participants are in the call using the name
-    they signed in.
+    # call.participants[0].wait_for_message_and_reply()
 
-    If all the participants are accounted for, it prints out that all the participants have been accounted for.
-
-
-    The second part of the function puts all the call participants into a list of tuples (user_name, driver_instance)
-    it then opens the chat icon for each participant and sends messages and records them iterativeely recording
-    for each message who sent it and who read it and the contents of the message in a csv for later analysis
-    '''
-    driver_starter = webdriver.Chrome(service=s, options=chrome_options)
-    driver_user2 = webdriver.Chrome(service=s, options=chrome_options)
-    participants_drivers = {'driver_user2':driver_user2} # here you can create as many participants as you would like
-    # to add to the call
-
-    call_url = start_a_call(driver_starter)
-    # double try starting a call if fails
-    if not call_url:
-        # try again:
-        driver_starter.quit()
-        driver_starter = webdriver.Chrome(service=s, options=chrome_options)
-        call_url = start_a_call(driver_starter)
-    if not call_url:
-        raise Exception('call failed to start twice, exiting')
-
-    join_a_call(participants_drivers, call_url=call_url)
-    if confirm_participants(driver_starter, participants_drivers):
-        print('all users have entered the call!, end of q1')
-
-    print('question2: starting chat')
-    participants_drivers['starter_user1'] = driver_starter
-    tuple_list_participants = list(participants_drivers.items())
-
-    # for purpose of test remove old csv of chat data collection
-    file_path = 'chat_data.csv'
-    if os.path.exists(file_path):
-        os.remove(file_path)
-    open_chat_box(tuple_list_participants)
-    start_discussion(tuple_list_participants, 3)
-
-# run exam here
-exam_main()
+if __name__ == '__main__':
+    exam_main()
